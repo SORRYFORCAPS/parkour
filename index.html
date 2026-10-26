@@ -143,29 +143,35 @@ kbd {
 .hint { color: var(--muted); font-size: 16px; }
 button:focus-visible { outline: 3px solid var(--hazard); outline-offset: 3px; }
 
-/* Touch: the left half of the screen ducks (drag sideways to steer), the right half jumps.
-   The pads only show where the zones are; the canvas takes the touches. */
-.touch {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
-  display: none; justify-content: space-between; gap: 12px;
-  pointer-events: none;
+/* Touch: tap above the street to jump, hold on the street to duck, drag sideways to steer.
+   The zones are only hinted at; the canvas takes the touches. --gy is the street line, set from script. */
+.touch { position: absolute; inset: 0; display: none; pointer-events: none; }
+.zone-duck, .zone-jump {
+  position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font: 700 15px/1.1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper);
+  transition: background 0.08s, opacity 0.6s;
 }
-.pad {
-  width: min(42vw, 190px); height: 84px; box-sizing: border-box;
-  border-radius: 14px; background: rgba(29, 35, 41, 0.6); color: var(--paper);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  font: 700 15px/1.1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase;
+.zone-duck {
+  left: 0; right: 0; top: var(--gy, 80%); bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  text-shadow: 0 1px 0 var(--ink), 0 0 6px var(--ink);
 }
-.pad .ar { font-size: 22px; line-height: 1; }
-.pad .sub { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: none; color: var(--muted); }
-.pad.on { background: var(--hivis); color: var(--ink); }
-.pad.on .sub { color: var(--ink); }
-body.touchy .touch { display: flex; }
+.zone-duck.on { background: rgba(255, 90, 31, 0.22); }
+.zone-jump {
+  left: 50%; top: calc(var(--gy, 80%) * 0.4); transform: translateX(-50%);
+  padding: 8px 16px 7px; border-radius: 10px; background: rgba(29, 35, 41, 0.55);
+}
+.zone-jump.on { background: var(--hivis); color: var(--ink); }
+.touch .ar { font-size: 20px; line-height: 1; }
+.touch .sub { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: none; opacity: 0.8; white-space: nowrap; }
+/* The labels fade out a few seconds into a run; the pressed feedback stays. */
+.touch.quiet .zone-jump:not(.on) { opacity: 0; }
+.touch.quiet .zone-duck > * { opacity: 0; transition: opacity 0.6s; }
+body.touchy .touch { display: block; }
 body.touchy .touch-note { display: block; }
 body.touchy .desk-only { display: none; }
 @media (pointer: coarse) {
-  .touch { display: flex; }
+  .touch { display: block; }
   .touch-note { display: block; }
   .desk-only { display: none; }
 }
@@ -178,8 +184,7 @@ body.touchy .desk-only { display: none; }
   .banner { top: calc(env(safe-area-inset-top, 0px) + 116px); }
 }
 @media (max-height: 500px) {
-  .pad { height: 52px; }
-  .pad .sub { display: none; }
+  .touch .sub { display: none; }
 }
 </style>
 
@@ -214,7 +219,7 @@ body.touchy .desk-only { display: none; }
       <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Spring bakåt eller framåt i bild.</dd>
       <dt><kbd>P</kbd><kbd>Esc</kbd></dt><dd>Pausa.</dd>
     </dl>
-    <p class="touch-note">Tryck på högra halvan av skärmen för att hoppa, håll kvar för högre hopp. Håll på vänstra halvan för att ducka och glida, och dra åt sidan för att springa bakåt eller framåt.</p>
+    <p class="touch-note">Tryck ovanför gatan för att hoppa, håll kvar för högre hopp. Håll på gatan för att ducka och glida. Dra fingret åt sidan för att springa bakåt eller framåt.</p>
     <div class="actions">
       <button class="btn" id="start" type="button">Starta</button>
       <span class="hint desk-only">eller tryck Space</span>
@@ -222,8 +227,8 @@ body.touchy .desk-only { display: none; }
   </div>
 
   <div class="touch" id="touch" aria-hidden="true">
-    <div class="pad" id="pad-duck"><span class="ar">▼</span>Ducka<span class="sub">Dra åt sidan för att styra</span></div>
-    <div class="pad" id="pad-jump"><span class="ar">▲</span>Hoppa<span class="sub">Håll för högre hopp</span></div>
+    <div class="zone-jump" id="pad-jump"><span class="ar">▲</span><span>Hoppa</span><span class="sub">Tryck ovanför gatan</span></div>
+    <div class="zone-duck" id="pad-duck"><span class="ar">▼</span><span>Ducka</span><span class="sub">Håll på gatan · dra åt sidan för att styra</span></div>
   </div>
 </div>
 
@@ -372,6 +377,7 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   BASE = Math.min(H / 640, W / 720);
   GY = H * (H > W * 1.1 ? 0.7 : 0.8);
+  document.documentElement.style.setProperty('--gy', GY + 'px');
   CAP = Math.max(1, Math.min(2.2, 0.3 * GY / (PH * BASE)));
   OL = clamp(Math.min(W, H) / 260, 2.5, 4.5);
 }
@@ -1503,10 +1509,10 @@ function drawFx() {
   ctx.globalAlpha = 1;
 }
 
-// A small stick under the left thumb shows the steering.
+// A small stick under a steering finger.
 function drawTouches() {
   for (const t of touchPts.values()) {
-    if (t.zone !== 'duck') continue;
+    if (!t.steered) continue;
     const r = STEER + 10, dx = clamp(t.x - t.x0, -r, r);
     ctx.strokeStyle = 'rgba(238,241,242,0.5)'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(t.x0, t.y0, r, 0, Math.PI * 2); ctx.stroke();
@@ -1621,6 +1627,9 @@ function startGame() {
   $('banner').hidden = true;
   $('pause').hidden = false;
   $('start').blur();
+  $('touch').classList.remove('quiet');
+  clearTimeout(startGame.quiet);
+  startGame.quiet = setTimeout(() => $('touch').classList.add('quiet'), 4000);
   updateHud();
 }
 
@@ -1652,19 +1661,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 $('start').addEventListener('click', startGame);
 
 // Mouse and pen: click anywhere to jump.
-// Touch: left half of the screen ducks while held and steers when dragged sideways; right half jumps.
+// Touch: above the street jumps, on the street ducks; any finger dragged sideways steers.
+// A swipe down after jumping turns into a duck (fast fall), a swipe up from the street into a jump.
 const touchPts = new Map();
-const STEER = 26;
+const STEER = 26, SWIPE = 40;
 function syncTouch() {
   let down = false, left = false, right = false, jump = false;
   for (const t of touchPts.values()) {
+    if (t.steer < 0) left = true; else if (t.steer > 0) right = true;
     if (t.zone === 'jump') jump = true;
-    else if (t.steer < 0) left = true;
-    else if (t.steer > 0) right = true;
     else if (!t.steered) down = true;
   }
   keys.down = down; keys.left = left; keys.right = right; keys.jump = jump;
-  $('pad-duck').classList.toggle('on', down || left || right);
+  $('pad-duck').classList.toggle('on', down);
   $('pad-jump').classList.toggle('on', jump);
 }
 
@@ -1680,21 +1689,25 @@ cv.addEventListener('pointerdown', e => {
   document.body.classList.add('touchy');
   if (state !== 'play') { startGame(); return; }
   try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-  const zone = e.clientX < cv.clientWidth / 2 ? 'duck' : 'jump';
+  const zone = e.clientY < GY ? 'jump' : 'duck';
   touchPts.set(e.pointerId, { zone, x0: e.clientX, y0: e.clientY, x: e.clientX, steer: 0, steered: false });
   syncTouch();
   if (zone === 'jump') pressJump();
 });
 cv.addEventListener('pointermove', e => {
   const t = touchPts.get(e.pointerId);
-  if (!t || t.zone !== 'duck') return;
+  if (!t) return;
   t.x = e.clientX;
-  const dx = t.x - t.x0;
-  // Once the thumb has steered, coming back to the middle means stand still, not duck.
+  const dx = t.x - t.x0, dy = e.clientY - t.y0;
+  if (Math.abs(dy) > SWIPE && Math.abs(dy) > Math.abs(dx)) {
+    const zone = dy < 0 ? 'jump' : 'duck';
+    t.y0 = e.clientY;
+    if (zone !== t.zone) { t.zone = zone; t.steered = false; syncTouch(); if (zone === 'jump') pressJump(); }
+  }
+  // Once the finger has steered, coming back to the middle means stand still, not duck.
   const steer = Math.abs(dx) > STEER ? Math.sign(dx) : Math.abs(dx) < STEER * 0.5 ? 0 : t.steer;
   if (steer) t.steered = true;
   if (steer !== t.steer) { t.steer = steer; syncTouch(); }
-  else if (t.steered && !steer) syncTouch();
 });
 const releaseCanvas = e => {
   if (e.pointerType !== 'touch') { keys.jump = false; return; }
